@@ -1,13 +1,12 @@
 import express from "express";
+import { authorizeFounder, protectAdmin } from "./middleware/auth.middleware.js";
 import {
-  authorizeFounder,
   createAdmin,
   deleteAdmin,
   getAdminById,
   getCurrentAdmin,
   getAdmins,
   loginAdmin,
-  protectAdmin,
   updateAdmin,
 } from "./adminController.js";
 
