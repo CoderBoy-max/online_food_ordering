@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import Admin from "./adminModel.js";
+import Admin from "../models/adminModel.js";
 import generateToken from "../../utils/generateToken.js";
 
 const sanitizeAdmin = (admin) => {

@@ -1,5 +1,5 @@
 import express from "express";
-import { authorizeFounder, protectAdmin } from "./middleware/auth.middleware.js";
+import { authorizeFounder, protectAdmin } from "../middleware/auth.middleware.js";
 import {
   createAdmin,
   deleteAdmin,
@@ -8,7 +8,7 @@ import {
   getAdmins,
   loginAdmin,
   updateAdmin,
-} from "./adminController.js";
+} from "../controller/adminController.js";
 
 const router = express.Router();
 

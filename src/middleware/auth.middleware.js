@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
-import Admin from "../adminModel.js";
-import { getJwtSecret } from "../../../utils/generateToken.js";
+import Admin from "../models/adminModel.js";
+import { getJwtSecret } from "../../utils/generateToken.js";
 
 export const protectAdmin = async (req, res, next) => {
   const authHeader = req.headers.authorization || "";
