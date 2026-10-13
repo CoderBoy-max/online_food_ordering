@@ -8,7 +8,7 @@ import {
   getAdmins,
   loginAdmin,
   updateAdmin,
-} from "../controller/adminController.js";
+} from "../controllers/adminController.js";
 
 const router = express.Router();
 

@@ -1,6 +1,6 @@
 import express from "express";
 import adminRoutes from "./routes/adminRoutes.js";
-import authRoutes from './routes/auth.routes.js';
+import authRoutes from './routes/authroutes.js';
 import notFound from './middleware/notFound.js';
 import errorHandler from './middleware/errorHandler.js';
 
