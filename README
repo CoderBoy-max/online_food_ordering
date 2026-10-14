@@ -1,2 +1,40 @@
 after cloning the repo 
 install dependences
+The admin code provides an API for creating and managing administrator accounts.
+
+adminModel.js defines the admin record: name, email, password, and role. It hashes passwords before saving and provides a way to check passwords during login.
+adminController.js implements the actions: sign up, log in, list or view admins, update or delete an account, and return the current admin. It omits passwords from responses and issues a JWT after signup or login.
+adminRoutes.js maps those actions to endpoints under /api/admin.
+auth.middleware.js checks the bearer token and loads the admin for protected routes. It also restricts deletion to admins whose role is founder.
+app.js mounts the routes in the Express app.
+The main flow is: an admin signs in, receives a token, then sends that token to access protected admin-management endpoints. One important detail: /api/admin/signup is public, and signup accepts role: "founder", so anyone could create a founder account through that endpoint.
+
+
+Menu module
+
+The menu code provides an API for restaurant owners to manage their menu, and for customers to view it.
+
+Category.js defines a menu section: restaurant and name. A unique index stops one restaurant having two categories with the same name.
+MenuItem.js defines a food item: restaurant, category, name, description, price (whole number, 0 or more), imageUrl and isAvailable.
+menu.validator.js checks input before anything touches the database. It checks ids, name length, price, image link and true/false values, and returns all the errors in one 400 response.
+menu.controller.js implements the actions: view menu, create, rename or delete a category, and create, update, set availability or delete an item. It passes the request to the service and replies with {success, data, message}.
+menu.service.js holds the business rules. It checks that the logged-in owner owns the restaurant, that a category belongs to the same restaurant as its item, and that a category with items can't be deleted. Duplicate category names return 409. The public menu is built here, grouped by category.
+menu.routes.js maps these actions to 8 endpoints. Owner routes are protected by auth and allowRoles('owner'), and the public menu route is open.
+seed.js fills the database with a standard restaurant menu for testing.
+menu.validator.test.js has 8 automated tests for the validators.
+
+The main flow is: an owner logs in and receives a token, then sends it to create categories and items for their own restaurant. A customer calls the public menu endpoint and gets the approved restaurant's menu grouped by category.
+
+Endpoints:
+GET /restaurants/:id/menu (public)
+POST /restaurants/:id/categories (owner)
+PUT /categories/:id (owner)
+DELETE /categories/:id (owner)
+POST /restaurants/:id/menu-items (owner)
+PUT /menu-items/:id (owner)
+PATCH /menu-items/:id/availability (owner)
+DELETE /menu-items/:id (owner)
+
+How it was tested: 8 automated tests run with node --test test/menu.validator.test.js. All 8 endpoints were also tested by hand against the real MongoDB Atlas database with curl and a Postman collection, covering 400, 401, 403, 404 and 409 responses.
+
+One important detail: the menu routes are not mounted in app.js yet. They need the Auth middleware (auth and allowRoles) and the Restaurant model, which are still to be merged. Until then I tested with temporary stand-ins that are not in the repository. Ownership is enforced in the service, so one owner can't edit another owner's menu.
