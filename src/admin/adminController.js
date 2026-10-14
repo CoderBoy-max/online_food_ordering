@@ -2,6 +2,8 @@ import bcrypt from "bcrypt";
 import Admin from "./adminModel.js";
 import generateToken from "../../utils/generateToken.js";
 
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const sanitizeAdmin = (admin) => {
   if (!admin) {
     return null;
@@ -21,6 +23,26 @@ const issueToken = (admin) => generateToken(
   }
 );
 
+const validateAdminInput = ({ fullName, email, password, role }) => {
+  if (fullName !== undefined && (!String(fullName).trim() || String(fullName).trim().length < 2)) {
+    return "fullName must be at least 2 characters long.";
+  }
+
+  if (email !== undefined && !emailPattern.test(String(email).trim())) {
+    return "A valid email is required.";
+  }
+
+  if (password !== undefined && String(password).length < 8) {
+    return "Password must be at least 8 characters long.";
+  }
+
+  if (role !== undefined && !["admin", "founder"].includes(String(role))) {
+    return "role must be either 'admin' or 'founder'.";
+  }
+
+  return null;
+};
+
 export const getAdmins = async (req, res) => {
   try {
     const admins = await Admin.find().select("-password");
@@ -33,9 +55,10 @@ export const getAdmins = async (req, res) => {
 export const createAdmin = async (req, res) => {
   try {
     const { fullName, email, password, role, isFounder } = req.body;
+    const validationError = validateAdminInput({ fullName, email, password, role });
 
-    if (!fullName || !email || !password) {
-      return res.status(400).json({ message: "fullName, email, and password are required." });
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -45,12 +68,15 @@ export const createAdmin = async (req, res) => {
       return res.status(409).json({ message: "An admin with this email already exists." });
     }
 
+    const normalizedRole = role === "founder" ? "founder" : "admin";
+    const normalizedIsFounder = isFounder === true || isFounder === "true" || isFounder === 1;
+
     const admin = await Admin.create({
       fullName: String(fullName).trim(),
       email: normalizedEmail,
       password,
-      role: role === "founder" ? "founder" : "admin",
-      isFounder: Boolean(isFounder),
+      role: normalizedRole,
+      isFounder: normalizedIsFounder,
     });
 
     const token = issueToken(admin);
@@ -67,9 +93,10 @@ export const createAdmin = async (req, res) => {
 export const loginAdmin = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const validationError = validateAdminInput({ email, password });
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "email and password are required." });
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -114,8 +141,34 @@ export const updateAdmin = async (req, res) => {
   try {
     const { password, ...updates } = req.body;
 
-    if (password) {
+    if (password !== undefined) {
+      const passwordValidationError = validateAdminInput({ password });
+      if (passwordValidationError) {
+        return res.status(400).json({ message: passwordValidationError });
+      }
       updates.password = await bcrypt.hash(password, 10);
+    }
+
+    if (updates.fullName !== undefined) {
+      const fullNameValidationError = validateAdminInput({ fullName: updates.fullName });
+      if (fullNameValidationError) {
+        return res.status(400).json({ message: fullNameValidationError });
+      }
+    }
+
+    if (updates.email !== undefined) {
+      const emailValidationError = validateAdminInput({ email: updates.email });
+      if (emailValidationError) {
+        return res.status(400).json({ message: emailValidationError });
+      }
+      updates.email = String(updates.email).trim().toLowerCase();
+    }
+
+    if (updates.role !== undefined) {
+      const roleValidationError = validateAdminInput({ role: updates.role });
+      if (roleValidationError) {
+        return res.status(400).json({ message: roleValidationError });
+      }
     }
 
     const admin = await Admin.findByIdAndUpdate(req.params.id, updates, {
