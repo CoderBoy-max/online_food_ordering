@@ -1,0 +1,10 @@
+after cloning the repo 
+install dependences
+The admin code provides an API for creating and managing administrator accounts.
+
+adminModel.js defines the admin record: name, email, password, and role. It hashes passwords before saving and provides a way to check passwords during login.
+adminController.js implements the actions: sign up, log in, list or view admins, update or delete an account, and return the current admin. It omits passwords from responses and issues a JWT after signup or login.
+adminRoutes.js maps those actions to endpoints under /api/admin.
+auth.middleware.js checks the bearer token and loads the admin for protected routes. It also restricts deletion to admins whose role is founder.
+app.js mounts the routes in the Express app.
+The main flow is: an admin signs in, receives a token, then sends that token to access protected admin-management endpoints. One important detail: /api/admin/signup is public, and signup accepts role: "founder", so anyone could create a founder account through that endpoint.
