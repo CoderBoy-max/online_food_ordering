@@ -36,3 +36,22 @@ export const login = async ({ email, password }) => {
 
   return { user: clean(user), token: signToken(user) };
 };
+
+export const updateProfile = async (user, { name, phone }) => {
+  if (name) user.name = name;
+  if (phone) user.phone = phone;
+  await user.save();
+  return clean(user);
+};
+
+export const changePassword = async (userId, { currentPassword, newPassword }) => {
+  if (!currentPassword || !newPassword)
+    throw new ApiError(400, 'currentPassword and newPassword are required');
+
+  const user = await User.findById(userId).select('+passwordHash');
+  if (!(await user.comparePassword(currentPassword)))
+    throw new ApiError(401, 'Current password is wrong');
+
+  user.passwordHash = await bcrypt.hash(newPassword, 10);
+  await user.save();
+};
