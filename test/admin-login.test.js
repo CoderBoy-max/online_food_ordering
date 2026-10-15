@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import Admin from "../src/admin/adminModel.js";
-import { loginAdmin } from "../src/admin/adminController.js";
+import Admin from "../src/models/adminModel.js";
+import { loginAdmin } from "../src/controllers/adminController.js";
 
 test("loginAdmin signs in a valid admin and returns a token", async (t) => {
   const originalFindOne = Admin.findOne;

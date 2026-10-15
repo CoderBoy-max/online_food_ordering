@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import * as controller from '../controllers/menu.controller.js';
+import * as controller from '../controllers/menuController.js';
 import {
   validateIdParam,
   validateCategory,

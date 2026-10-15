@@ -1,6 +1,6 @@
 import asyncHandler from '../utils/asyncHandler.js';
 import { sendSuccess } from '../utils/response.js';
-import * as menuService from '../services/menu.service.js';
+import * as menuService from '../services/menuService.js';
 
 // Express 5 leaves req.body undefined when no body was sent.
 const bodyOf = (req) => req.body ?? {};
