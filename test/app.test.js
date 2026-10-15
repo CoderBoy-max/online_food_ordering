@@ -41,3 +41,29 @@ test("cart routes require authentication", async (t) => {
         errors: [],
     });
 });
+
+test("address and restaurant owner routes require authentication", async (t) => {
+    const server = app.listen(0, "127.0.0.1");
+    await once(server, "listening");
+
+    t.after(() => new Promise((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+    }));
+
+    const address = server.address();
+    const requests = [
+        ["GET", "/api/addresses"],
+        ["GET", "/api/restaurants/mine"],
+        ["POST", "/api/restaurants"],
+        ["PUT", "/api/restaurants/restaurant-id"],
+    ];
+
+    for (const [method, path] of requests) {
+        const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+            method,
+        });
+
+        assert.equal(response.status, 401, `${method} ${path}`);
+        assert.equal((await response.json()).message, "Authorization token is required");
+    }
+});
