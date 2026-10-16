@@ -1,6 +1,7 @@
 
 import mongoose from 'mongoose';
 import Order from '../models/Order.js';
+import Payment from '../models/paymentMethod.js';
 import Cart from '../models/cartModel.js';
 import MenuItem from '../models/MenuItem.js';
 import Restaurant from '../models/Restaurant.js';
@@ -9,15 +10,19 @@ import ApiError from '../utils/ApiError.js';
 import { clearCart } from './cartService.js';
 import { validateOrderStatusTransition } from './orderStatus.service.js';
 
-export const checkout = async (userId, { addressId, notes = '' }) => {
+export const checkout = async (
+  userId,
+  { addressId, notes = '', paymentMethod }
+) => {
   if (!mongoose.isValidObjectId(addressId)) {
     throw new ApiError(400, 'A valid delivery address is required.');
   }
 
-  const address = await Address.findOne({
-    _id: addressId,
-    user: userId,
-  });
+  if (typeof paymentMethod !== 'string' || !paymentMethod.trim()) {
+    throw new ApiError(400, 'A payment method is required.');
+  }
+
+  const address = await Address.findOne({ _id: addressId, user: userId });
 
   if (!address) {
     throw new ApiError(404, 'Delivery address not found.');
@@ -77,11 +82,22 @@ export const checkout = async (userId, { addressId, notes = '' }) => {
     notes,
   });
 
+  try {
+    await Payment.create({
+      order: order._id,
+      amount: total,
+      method: paymentMethod.trim(),
+      status: 'pending',
+    });
+  } catch (error) {
+    await Order.deleteOne({ _id: order._id });
+    throw error;
+  }
+
   await clearCart(userId);
 
   return order;
 };
-
 
 export const cancelCustomerOrder = async (userId, orderId) => {
   const order = await Order.findOne({
@@ -100,6 +116,5 @@ export const cancelCustomerOrder = async (userId, orderId) => {
 
   return order;
 };
-
 
 export default checkout;
