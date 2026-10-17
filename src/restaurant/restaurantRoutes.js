@@ -1,6 +1,5 @@
 
 import express from 'express';
-
 import {
   createRestaurant,
   getMyRestaurants,
@@ -9,17 +8,19 @@ import {
   updateRestaurant,
   setRestaurantOpenStatus,
 } from './restaurantController.js';
+import auth from '../middleware/auth.js';
+import { allowRoles } from '../middleware/role.js';
 
 const router = express.Router();
 
-// Public routes
+// Public routes — no login required
 router.get('/', getRestaurants);
-router.get('/mine', getMyRestaurants);
 router.get('/:id', getRestaurantById);
 
-// Owner routes
-router.post('/', createRestaurant);
-router.put('/:id', updateRestaurant);
-router.patch('/:id/open', setRestaurantOpenStatus);
+// Owner routes — login and owner role required
+router.get('/mine', auth, allowRoles('owner'), getMyRestaurants);
+router.post('/', auth, allowRoles('owner'), createRestaurant);
+router.put('/:id', auth, allowRoles('owner'), updateRestaurant);
+router.patch('/:id/open', auth, allowRoles('owner'), setRestaurantOpenStatus);
 
 export default router;

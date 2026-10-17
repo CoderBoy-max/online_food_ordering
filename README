@@ -1,2 +1,98 @@
-after cloning the repo 
-install dependences
+# Online Food Ordering API — Address & Restaurant Modules
+
+## Overview
+
+This project is a Node.js and Express API for an online food ordering system. My contribution includes the Address and Restaurant modules, with MongoDB/Mongoose for data persistence and JWT authentication for protected endpoints.
+
+## Technologies
+
+- Node.js
+- Express.js
+- MongoDB and Mongoose
+- JSON Web Tokens (JWT)
+- Postman for API testing
+
+## Setup
+
+1. Clone the project repository.
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Configure the required environment variables in `src/.env`. Do not commit this file.
+
+   ```env
+   DEVELOPMENT_DB_URI=your_mongodb_connection_string
+   JWT_SECRET=your_jwt_secret
+   JWT_EXPIRES_IN=1d
+   ```
+
+4. Start the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+The API runs at `http://localhost:3000`, unless configured otherwise.
+
+## Authentication Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/auth/register` | Register a user |
+| POST | `/api/auth/login` | Log in and obtain a JWT |
+
+Protected endpoints require a Bearer token in the Authorization header.
+
+## Address Endpoints
+
+Base URL: `/api/addresses`
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/` | Create an address |
+| GET | `/` | Retrieve the logged-in customer's addresses |
+| PUT | `/:id` | Update an address |
+| DELETE | `/:id` | Delete an address |
+
+Address fields include `label`, `street`, `city`, and optional `notes`. Address operations are restricted to authenticated customers and their own records.
+
+## Restaurant Endpoints
+
+Base URL: `/api/restaurants`
+
+| Method | Endpoint | Access | Purpose |
+|---|---|---|---|
+| GET | `/` | Public | List approved restaurants |
+| GET | `/mine` | Owner | Retrieve the logged-in owner's restaurants |
+| GET | `/:id` | Public | Retrieve an approved restaurant by ID |
+| POST | `/` | Owner | Create a restaurant |
+| PUT | `/:id` | Owner | Update an owned restaurant |
+| PATCH | `/:id/open` | Owner | Change restaurant open status |
+
+New restaurants default to `pending` approval status and `isOpen: false`. The public listing only displays approved restaurants.
+
+Restaurant fields include `name`, `description`, `cuisine`, `phone`, `address`, and `openHours`.
+
+## Testing
+
+The following checks were performed in Postman:
+
+- Owner registration/login
+- Restaurant creation
+- Owner's restaurant listing
+- Public restaurant listing without authentication
+- Customer registration/login
+- Address creation
+- Address retrieval
+- Address update
+
+Completed the address deletion test before marking all Address CRUD operations as verified.
+
+## Security
+
+- Kept `.env` and database credentials private.
+- Used JWT authentication for protected endpoints.
+- Never commit access tokens or secrets to the repository.
