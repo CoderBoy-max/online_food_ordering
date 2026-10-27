@@ -1,8 +1,8 @@
-
 import Restaurant from '../models/Restaurant.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { sendSuccess } from '../utils/response.js';
+import { getRatings, noRating } from '../services/review.service.js';
 
 // Create a restaurant
 export const createRestaurant = asyncHandler(async (req, res) => {
@@ -76,8 +76,15 @@ export const getRestaurants = asyncHandler(async (req, res) => {
     Restaurant.countDocuments(filter),
   ]);
 
+  // Add average rating and review count to each restaurant
+  const ratings = await getRatings(restaurants.map((r) => r._id));
+  const restaurantsWithRatings = restaurants.map((r) => ({
+    ...r.toObject(),
+    ...(ratings[String(r._id)] || noRating),
+  }));
+
   return sendSuccess(res, {
-    restaurants,
+    restaurants: restaurantsWithRatings,
     total,
     page,
     limit,
@@ -97,9 +104,11 @@ export const getRestaurantById = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Restaurant not found.');
   }
 
+  const ratings = await getRatings([restaurant._id]);
+
   return sendSuccess(
     res,
-    restaurant,
+    { ...restaurant.toObject(), ...(ratings[String(restaurant._id)] || noRating) },
     'Restaurant retrieved successfully.'
   );
 });

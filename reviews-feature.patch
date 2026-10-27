@@ -1,0 +1,460 @@
+From c0419b576138a371e802cdc0d760ac529cbff954 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 17 Oct 2026 13:55:34 +0000
+Subject: [PATCH 1/2] fix: move timestamps option out of Payment schema fields
+ (app crashed on import)
+
+---
+ src/models/paymentMethod.js | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/src/models/paymentMethod.js b/src/models/paymentMethod.js
+index 96d8231..8437a43 100644
+--- a/src/models/paymentMethod.js
++++ b/src/models/paymentMethod.js
+@@ -24,10 +24,8 @@ const paymentSchema = new Schema ({
+     },
+     reference: {
+         type: String,
+-    },
+-   timestamps: true 
+-
+-})
++    }
++}, { timestamps: true })
+ 
+ const Payment = mongoose.model('Payment', paymentSchema);
+ 
+-- 
+2.43.0
+
+
+From fcb531868be7e736ec95da870682f5162078799e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 17 Oct 2026 13:55:39 +0000
+Subject: [PATCH 2/2] feat: add review module (POST /orders/:id/review, GET
+ /restaurants/:id/reviews) with rating summary on restaurants
+
+---
+ src/app.js                             |  3 +
+ src/controllers/reviewController.js    | 18 +++++
+ src/models/Review.js                   | 46 ++++++++++++
+ src/restaurant/restaurantController.js |  9 ++-
+ src/routes/reviewRoutes.js             | 21 ++++++
+ src/services/review.service.js         | 99 ++++++++++++++++++++++++++
+ src/validators/review.validator.js     | 31 ++++++++
+ test/review.test.js                    | 93 ++++++++++++++++++++++++
+ 8 files changed, 318 insertions(+), 2 deletions(-)
+ create mode 100644 src/controllers/reviewController.js
+ create mode 100644 src/models/Review.js
+ create mode 100644 src/routes/reviewRoutes.js
+ create mode 100644 src/services/review.service.js
+ create mode 100644 src/validators/review.validator.js
+ create mode 100644 test/review.test.js
+
+diff --git a/src/app.js b/src/app.js
+index 34a9f9c..ca8abfe 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -8,6 +8,7 @@ import cartRoutes from './routes/cartRoute.js';
+ import restaurantRoutes from './restaurant/restaurantRoutes.js';
+ import orderRoutes from './routes/orderRoutes.js';
+ import ownerOrderRoutes from './routes/ownerOrderRoutes.js';
++import { orderReviewRouter, restaurantReviewRouter } from './routes/reviewRoutes.js';
+ 
+ const app = express();
+ 
+@@ -19,7 +20,9 @@ app.use('/api/v1/auth', authRoutes);
+ app.use('/api/admin', adminRoutes);
+ app.use('/api/addresses', addressRoutes);
+ app.use('/cart', cartRoutes);
++app.use('/api/restaurants', restaurantReviewRouter);
+ app.use('/api/restaurants', restaurantRoutes);
++app.use('/api/v1/orders', orderReviewRouter);
+ app.use('/api/v1/orders', orderRoutes);
+ app.use('/api/v1/owner/orders', ownerOrderRoutes);
+ 
+diff --git a/src/controllers/reviewController.js b/src/controllers/reviewController.js
+new file mode 100644
+index 0000000..8628db9
+--- /dev/null
++++ b/src/controllers/reviewController.js
+@@ -0,0 +1,18 @@
++import asyncHandler from '../utils/asyncHandler.js';
++import { sendSuccess } from '../utils/response.js';
++import { createReview, listRestaurantReviews } from '../services/review.service.js';
++
++export const createOrderReview = asyncHandler(async (req, res) => {
++  const review = await createReview(req.user._id, req.params.id, req.body);
++
++  return sendSuccess(res, review, 'Review submitted successfully.', 201);
++});
++
++export const getRestaurantReviews = asyncHandler(async (req, res) => {
++  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
++  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
++
++  const data = await listRestaurantReviews(req.params.id, { page, limit });
++
++  return sendSuccess(res, data, 'Reviews retrieved successfully.');
++});
+diff --git a/src/models/Review.js b/src/models/Review.js
+new file mode 100644
+index 0000000..6f294dc
+--- /dev/null
++++ b/src/models/Review.js
+@@ -0,0 +1,46 @@
++import mongoose from 'mongoose';
++
++const reviewSchema = new mongoose.Schema(
++  {
++    order: {
++      type: mongoose.Schema.Types.ObjectId,
++      ref: 'Order',
++      required: true,
++      unique: true, // one review per order
++    },
++    user: {
++      type: mongoose.Schema.Types.ObjectId,
++      ref: 'User',
++      required: true,
++    },
++    restaurant: {
++      type: mongoose.Schema.Types.ObjectId,
++      ref: 'Restaurant',
++      required: true,
++    },
++    rating: {
++      type: Number,
++      required: true,
++      min: 1,
++      max: 5,
++      validate: {
++        validator: Number.isInteger,
++        message: 'rating must be a whole number from 1 to 5',
++      },
++    },
++    comment: {
++      type: String,
++      trim: true,
++      maxlength: 500,
++      default: '',
++    },
++  },
++  { timestamps: { createdAt: true, updatedAt: false } }
++);
++
++// Fast "newest reviews for this restaurant" lookups and rating averages
++reviewSchema.index({ restaurant: 1, createdAt: -1 });
++
++const Review = mongoose.model('Review', reviewSchema);
++
++export default Review;
+diff --git a/src/restaurant/restaurantController.js b/src/restaurant/restaurantController.js
+index 1d5664b..c6ba733 100644
+--- a/src/restaurant/restaurantController.js
++++ b/src/restaurant/restaurantController.js
+@@ -3,6 +3,7 @@ import Restaurant from '../models/Restaurant.js';
+ import ApiError from '../utils/ApiError.js';
+ import asyncHandler from '../utils/asyncHandler.js';
+ import { sendSuccess } from '../utils/response.js';
++import { getRatingSummaries, withRatingSummary } from '../services/review.service.js';
+ 
+ // Create a restaurant
+ export const createRestaurant = asyncHandler(async (req, res) => {
+@@ -76,8 +77,10 @@ export const getRestaurants = asyncHandler(async (req, res) => {
+     Restaurant.countDocuments(filter),
+   ]);
+ 
++  const summaries = await getRatingSummaries(restaurants.map((r) => r._id));
++
+   return sendSuccess(res, {
+-    restaurants,
++    restaurants: restaurants.map((r) => withRatingSummary(r, summaries)),
+     total,
+     page,
+     limit,
+@@ -97,9 +100,11 @@ export const getRestaurantById = asyncHandler(async (req, res) => {
+     throw new ApiError(404, 'Restaurant not found.');
+   }
+ 
++  const summaries = await getRatingSummaries([restaurant._id]);
++
+   return sendSuccess(
+     res,
+-    restaurant,
++    withRatingSummary(restaurant, summaries),
+     'Restaurant retrieved successfully.'
+   );
+ });
+diff --git a/src/routes/reviewRoutes.js b/src/routes/reviewRoutes.js
+new file mode 100644
+index 0000000..fdd6fd0
+--- /dev/null
++++ b/src/routes/reviewRoutes.js
+@@ -0,0 +1,21 @@
++import { Router } from 'express';
++import { createOrderReview, getRestaurantReviews } from '../controllers/reviewController.js';
++import { validateCreateReview } from '../validators/review.validator.js';
++import { validateIdParam } from '../validators/menu.validator.js';
++import auth from '../middleware/auth.js';
++import { allowRoles } from '../middleware/role.js';
++
++// Mounted at /api/v1/orders  ->  POST /:id/review
++export const orderReviewRouter = Router();
++orderReviewRouter.post(
++  '/:id/review',
++  auth,
++  allowRoles('customer'),
++  validateIdParam,
++  validateCreateReview,
++  createOrderReview
++);
++
++// Mounted at /api/restaurants  ->  GET /:id/reviews (public)
++export const restaurantReviewRouter = Router();
++restaurantReviewRouter.get('/:id/reviews', validateIdParam, getRestaurantReviews);
+diff --git a/src/services/review.service.js b/src/services/review.service.js
+new file mode 100644
+index 0000000..00fecf5
+--- /dev/null
++++ b/src/services/review.service.js
+@@ -0,0 +1,99 @@
++import Order from '../models/Order.js';
++import Restaurant from '../models/Restaurant.js';
++import Review from '../models/Review.js';
++import ApiError from '../utils/ApiError.js';
++
++// A customer reviews one of their own delivered orders.
++// The restaurant always comes from the order, never from the client.
++export const createReview = async (userId, orderId, { rating, comment = '' }) => {
++  const order = await Order.findById(orderId);
++
++  if (!order) throw new ApiError(404, 'Order not found.');
++
++  if (String(order.user) !== String(userId)) {
++    throw new ApiError(403, 'You can only review your own orders.');
++  }
++
++  if (order.status !== 'delivered') {
++    throw new ApiError(400, 'Only delivered orders can be reviewed.');
++  }
++
++  if (await Review.findOne({ order: order._id })) {
++    throw new ApiError(409, 'You have already reviewed this order.');
++  }
++
++  try {
++    return await Review.create({
++      order: order._id,
++      user: userId,
++      restaurant: order.restaurant,
++      rating,
++      comment,
++    });
++  } catch (error) {
++    // Two requests at the same time: the unique index on `order` catches it
++    if (error?.code === 11000) {
++      throw new ApiError(409, 'You have already reviewed this order.');
++    }
++    throw error;
++  }
++};
++
++// Public list of an approved restaurant's reviews, newest first.
++export const listRestaurantReviews = async (restaurantId, { page, limit }) => {
++  const restaurant = await Restaurant.findOne({
++    _id: restaurantId,
++    status: 'approved',
++  });
++
++  if (!restaurant) throw new ApiError(404, 'Restaurant not found.');
++
++  const [reviews, total, summaries] = await Promise.all([
++    Review.find({ restaurant: restaurant._id })
++      .sort({ createdAt: -1 })
++      .skip((page - 1) * limit)
++      .limit(limit)
++      .populate('user', 'name') // name only: never email or password hash
++      .select('rating comment user createdAt'),
++    Review.countDocuments({ restaurant: restaurant._id }),
++    getRatingSummaries([restaurant._id]),
++  ]);
++
++  const summary = summaries.get(String(restaurant._id)) ?? EMPTY_SUMMARY;
++
++  return { reviews, total, page, limit, ...summary };
++};
++
++const EMPTY_SUMMARY = { averageRating: null, reviewCount: 0 };
++
++// Returns Map<restaurantId, { averageRating, reviewCount }> for many restaurants
++// in one query. Restaurants with no reviews are not in the map.
++export const getRatingSummaries = async (restaurantIds) => {
++  if (restaurantIds.length === 0) return new Map();
++
++  const rows = await Review.aggregate([
++    { $match: { restaurant: { $in: restaurantIds } } },
++    {
++      $group: {
++        _id: '$restaurant',
++        average: { $avg: '$rating' },
++        count: { $sum: 1 },
++      },
++    },
++  ]);
++
++  return new Map(
++    rows.map((row) => [
++      String(row._id),
++      {
++        averageRating: Math.round(row.average * 10) / 10,
++        reviewCount: row.count,
++      },
++    ])
++  );
++};
++
++export const withRatingSummary = (restaurant, summaries) => ({
++  ...restaurant.toObject(),
++  ...(summaries.get(String(restaurant._id)) ?? EMPTY_SUMMARY),
++});
+diff --git a/src/validators/review.validator.js b/src/validators/review.validator.js
+new file mode 100644
+index 0000000..0df90e1
+--- /dev/null
++++ b/src/validators/review.validator.js
+@@ -0,0 +1,31 @@
++import ApiError from '../utils/ApiError.js';
++
++const MAX_COMMENT = 500;
++
++// Checks the body of POST /orders/:id/review.
++// Collects every problem and passes a single 400 to the error handler.
++export const validateCreateReview = (req, res, next) => {
++  const body = req.body ?? {};
++  const errors = [];
++
++  if (!Number.isInteger(body.rating) || body.rating < 1 || body.rating > 5) {
++    errors.push('rating must be a whole number from 1 to 5');
++  }
++
++  if (body.comment !== undefined && body.comment !== null) {
++    if (typeof body.comment !== 'string') {
++      errors.push('comment must be text');
++    } else if (body.comment.trim().length > MAX_COMMENT) {
++      errors.push(`comment must be at most ${MAX_COMMENT} characters`);
++    }
++  }
++
++  if (errors.length) return next(new ApiError(400, 'Validation failed', errors));
++
++  // Keep only the fields we accept, so extras (user, restaurant) are ignored
++  req.body = {
++    rating: body.rating,
++    comment: typeof body.comment === 'string' ? body.comment.trim() : '',
++  };
++  return next();
++};
+diff --git a/test/review.test.js b/test/review.test.js
+new file mode 100644
+index 0000000..7c3da01
+--- /dev/null
++++ b/test/review.test.js
+@@ -0,0 +1,93 @@
++import assert from 'node:assert/strict';
++import { once } from 'node:events';
++import { test, mock, afterEach } from 'node:test';
++import app from '../src/app.js';
++import Order from '../src/models/Order.js';
++import Review from '../src/models/Review.js';
++import Restaurant from '../src/models/Restaurant.js';
++import { createReview, getRatingSummaries, listRestaurantReviews } from '../src/services/review.service.js';
++import { validateCreateReview } from '../src/validators/review.validator.js';
++
++afterEach(() => mock.restoreAll());
++
++const ID = '64b7f0c2a1b2c3d4e5f60718';
++const USER = '64b7f0c2a1b2c3d4e5f60001';
++const run = (body) => {
++  const req = { body };
++  let err;
++  validateCreateReview(req, {}, (e) => { err = e; });
++  return { req, err };
++};
++
++test('validator accepts a good review and strips extra fields', () => {
++  const { req, err } = run({ rating: 5, comment: '  Great  ', user: 'x', restaurant: 'y' });
++  assert.equal(err, undefined);
++  assert.deepEqual(req.body, { rating: 5, comment: 'Great' });
++});
++
++test('validator rejects bad ratings and long comments', () => {
++  for (const rating of [0, 6, 3.5, '4', undefined, null]) {
++    assert.equal(run({ rating }).err.statusCode, 400, `rating ${rating}`);
++  }
++  assert.equal(run({ rating: 4, comment: 'a'.repeat(501) }).err.statusCode, 400);
++  assert.equal(run({ rating: 4, comment: 42 }).err.statusCode, 400);
++  assert.equal(run({ rating: 4 }).err, undefined);
++});
++
++test('createReview: 404, 403, 400, 409 rules', async () => {
++  const order = (over) => ({ _id: ID, user: USER, restaurant: 'rest1', status: 'delivered', ...over });
++
++  mock.method(Order, 'findById', async () => null);
++  await assert.rejects(createReview(USER, ID, { rating: 5 }), { statusCode: 404 });
++
++  mock.method(Order, 'findById', async () => order({ user: 'someone-else' }));
++  await assert.rejects(createReview(USER, ID, { rating: 5 }), { statusCode: 403 });
++
++  mock.method(Order, 'findById', async () => order({ status: 'pending' }));
++  await assert.rejects(createReview(USER, ID, { rating: 5 }), { statusCode: 400 });
++
++  mock.method(Order, 'findById', async () => order());
++  mock.method(Review, 'findOne', async () => ({ _id: 'existing' }));
++  await assert.rejects(createReview(USER, ID, { rating: 5 }), { statusCode: 409 });
++});
++
++test('createReview: restaurant comes from the order; race maps to 409', async () => {
++  mock.method(Order, 'findById', async () => ({ _id: ID, user: USER, restaurant: 'rest-from-order', status: 'delivered' }));
++  mock.method(Review, 'findOne', async () => null);
++  const create = mock.method(Review, 'create', async (doc) => doc);
++
++  const review = await createReview(USER, ID, { rating: 4, comment: 'ok' });
++  assert.equal(review.restaurant, 'rest-from-order');
++  assert.equal(create.mock.calls[0].arguments[0].user, USER);
++
++  create.mock.restore();
++  mock.method(Review, 'create', async () => { throw Object.assign(new Error('dup'), { code: 11000 }); });
++  await assert.rejects(createReview(USER, ID, { rating: 4 }), { statusCode: 409 });
++});
++
++test('listRestaurantReviews: 404 for unapproved/missing restaurant', async () => {
++  mock.method(Restaurant, 'findOne', async () => null);
++  await assert.rejects(listRestaurantReviews(ID, { page: 1, limit: 10 }), { statusCode: 404 });
++});
++
++test('getRatingSummaries rounds to one decimal and handles empty input', async () => {
++  assert.equal((await getRatingSummaries([])).size, 0);
++  mock.method(Review, 'aggregate', async () => [{ _id: 'r1', average: 4.3333, count: 3 }]);
++  const map = await getRatingSummaries(['r1']);
++  assert.deepEqual(map.get('r1'), { averageRating: 4.3, reviewCount: 3 });
++});
++
++test('review routes: auth and id checks', async (t) => {
++  const server = app.listen(0, '127.0.0.1');
++  await once(server, 'listening');
++  t.after(() => new Promise((res, rej) => server.close((e) => (e ? rej(e) : res()))));
++  const base = `http://127.0.0.1:${server.address().port}`;
++
++  const noToken = await fetch(`${base}/api/v1/orders/${ID}/review`, {
++    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"rating":5}',
++  });
++  assert.equal(noToken.status, 401);
++
++  const badId = await fetch(`${base}/api/restaurants/not-an-id/reviews`);
++  assert.equal(badId.status, 400);
++});
+-- 
+2.43.0
+

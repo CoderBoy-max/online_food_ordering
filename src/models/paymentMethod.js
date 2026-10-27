@@ -22,12 +22,10 @@ const paymentSchema = new Schema ({
         enum: ['pending', 'paid', 'failed'],
         default: 'pending'
     },
-    reference: {
+        reference: {
         type: String,
-    },
-   timestamps: true 
-
-})
+    }
+}, { timestamps: true })
 
 const Payment = mongoose.model('Payment', paymentSchema);
 

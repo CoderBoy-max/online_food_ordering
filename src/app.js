@@ -8,6 +8,7 @@ import cartRoutes from './routes/cartRoute.js';
 import restaurantRoutes from './restaurant/restaurantRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import ownerOrderRoutes from './routes/ownerOrderRoutes.js';
+import reviewRoutes from './routes/reviewRoutes.js';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/owner/orders', ownerOrderRoutes);
 
+app.use('/api', reviewRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
