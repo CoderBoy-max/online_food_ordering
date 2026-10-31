@@ -8,6 +8,15 @@ The server requires `DEVELOPMENT_DB_URI` and the three Cloudinary settings at st
 
 Run the automated tests with `npm test`.
 
+## Payments
+
+Payments use Paystack. Set `PAYSTACK_SECRET_KEY` in the server environment (and optionally `PAYSTACK_CALLBACK_URL`); never expose the secret key in client-side code.
+
+- `POST /api/payments/initialize` — authenticated customers submit `{ "orderId": "<order-id>" }`; the response contains the Paystack checkout URL.
+- `GET /api/payments/verify/:reference` — the same customer verifies the payment after checkout.
+
+Amounts are taken from the customer's order total in naira and sent to Paystack in kobo. The API only marks a payment paid after verifying its reference, amount, currency, and successful status with Paystack.
+
 # Cart Module
 
 This document explains how the shopping cart works in the Online Food Ordering API. It is written for someone who has never seen this code, so you can read it top to bottom and understand what is going on.
