@@ -2,7 +2,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
 
-dotenv.config({ path: fileURLToPath(new URL('../.env', import.meta.url)) });
+dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
 const requiredSettings = ['CLOUDINARY_NAME', 'API_KEY', 'API_SECRET'];
 const missingSettings = requiredSettings.filter((setting) => !process.env[setting]?.trim());
